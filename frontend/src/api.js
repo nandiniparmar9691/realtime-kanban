@@ -1,5 +1,5 @@
 const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  import.meta.env.VITE_API_URL ||  "https://realtime-kanban-7se9.onrender.com/api";
 
 export const API_BASE = API_URL.replace(/\/api\/?$/, "");
 
