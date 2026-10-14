@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
 import { socket } from "./socket.js";
+import { useAuth } from "./contexts/auth-context.js";
 import KanbanColumn from "./components/KanbanColumn.jsx";
 import TaskModal from "./components/TaskModal.jsx";
 import Filters from "./components/Filters.jsx";
@@ -45,12 +46,13 @@ function applyMove(list, taskId, status, position) {
 }
 
 export default function App() {
+  const { user, logout } = useAuth();
   const [boards, setBoards] = useState([]);
   const [board, setBoard] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [activities, setActivities] = useState([]);
   const [memberName, setMemberName] = useState(
-    () => localStorage.getItem("kanban:memberName") || "Nandini"
+    () => user?.name || localStorage.getItem("kanban:memberName") || "Teammate"
   );
   const [onlineMembers, setOnlineMembers] = useState([]);
   const [typingMembers, setTypingMembers] = useState([]);
@@ -345,7 +347,7 @@ export default function App() {
     try {
       const updatedBoard = await api(`/boards/${board._id}/members`, {
         method: "POST",
-        body: JSON.stringify({ memberName: newMember.trim() }),
+        body: JSON.stringify({ memberEmail: newMember.trim() }),
       });
 
       setBoard(updatedBoard);
@@ -437,6 +439,12 @@ export default function App() {
               maxLength={50}
             />
           </label>
+
+          <div className="user-box">
+            <button className="secondary small" onClick={logout}>
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -536,10 +544,11 @@ export default function App() {
 
                 <form className="invite-form" onSubmit={inviteMember}>
                   <input
-                    placeholder="Member name"
+                    type="email"
+                    placeholder="Member email"
                     value={newMember}
                     onChange={(event) => setNewMember(event.target.value)}
-                    maxLength={50}
+                    maxLength={120}
                     required
                   />
                   <button className="secondary" disabled={inviteLoading}>
