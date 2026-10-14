@@ -81,6 +81,11 @@ export const register = async (req, res, next) => {
         .status(409)
         .json({ message: "An account with this email already exists" });
     }
+    console.error("[auth/register] error:", {
+      name: error?.name,
+      code: error?.code,
+      message: error?.message,
+    });
     return next(error);
   }
 };
@@ -99,11 +104,19 @@ export const login = async (req, res, next) => {
 
     const user = await User.findOne({ email }).select("+password");
 
-    if (!user) {
+    // A missing user or a user without a stored password hash is an
+    // authentication failure, never a server error.
+    if (!user || !user.password) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const passwordMatches = await user.comparePassword(password);
+    let passwordMatches = false;
+    try {
+      passwordMatches = await user.comparePassword(password);
+    } catch {
+      // Malformed/legacy stored hash: treat as invalid credentials.
+      passwordMatches = false;
+    }
 
     if (!passwordMatches) {
       return res.status(401).json({ message: "Invalid email or password" });
@@ -114,6 +127,11 @@ export const login = async (req, res, next) => {
 
     return res.json({ user: user.toPublicJSON() });
   } catch (error) {
+    console.error("[auth/login] error:", {
+      name: error?.name,
+      code: error?.code,
+      message: error?.message,
+    });
     return next(error);
   }
 };

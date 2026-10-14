@@ -16,6 +16,18 @@ import { errorMiddleware } from "./middleware/errorMiddleware.js";
 import { UPLOAD_DIR } from "./middleware/upload.js";
 import { TOKEN_COOKIE } from "./middleware/authMiddleware.js";
 
+// Fail loudly in the logs (never printing values) when required config is
+// missing, so misconfiguration surfaces immediately instead of as a 500.
+const REQUIRED_ENV = ["MONGO_URI", "JWT_SECRET"];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error(
+    `[startup] Missing required environment variables: ${missingEnv.join(
+      ", "
+    )}. Login/registration will fail until they are configured.`
+  );
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -41,10 +53,9 @@ function isAllowedOrigin(origin) {
 
 const corsOptions = {
   origin(origin, callback) {
-    if (isAllowedOrigin(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error("Not allowed by CORS"));
+    // Deny by omitting CORS headers instead of throwing, so a blocked
+    // origin returns a normal response rather than an HTTP 500.
+    return callback(null, isAllowedOrigin(origin));
   },
   credentials: true,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
@@ -57,10 +68,7 @@ app.use(cookieParser());
 const io = new Server(server, {
   cors: {
     origin(origin, callback) {
-      if (isAllowedOrigin(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
+      return callback(null, isAllowedOrigin(origin));
     },
     credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],

@@ -1,5 +1,5 @@
 export const errorMiddleware = (err, req, res, next) => {
-  console.error(err);
+  console.error(`[error] ${req.method} ${req.originalUrl}`, err);
 
   if (res.headersSent) {
     return next(err);
