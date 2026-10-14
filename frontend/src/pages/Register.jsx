@@ -65,6 +65,7 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
+          <img className="auth-logo" src="/logo.svg" alt="FlowBoard logo" />
           <span className="auth-brand">FlowBoard</span>
           <h1>Create your account</h1>
           <p>Start collaborating with your team in seconds.</p>

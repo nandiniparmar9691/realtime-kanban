@@ -39,6 +39,7 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
+          <img className="auth-logo" src="/logo.svg" alt="FlowBoard logo" />
           <span className="auth-brand">FlowBoard</span>
           <h1>Welcome back</h1>
           <p>Log in to continue to your boards.</p>

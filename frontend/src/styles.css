@@ -1346,6 +1346,14 @@ p {
   margin-bottom: 26px;
 }
 
+.auth-logo {
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  object-fit: contain;
+}
+
 .auth-brand {
   display: inline-block;
   margin-bottom: 14px;
