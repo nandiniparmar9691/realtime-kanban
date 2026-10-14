@@ -14,8 +14,11 @@ import {
   deleteAttachment,
 } from "../controllers/attachmentController.js";
 import { uploadSingle } from "../middleware/upload.js";
+import { requireAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+router.use(requireAuth);
 
 router.patch("/:taskId", updateTask);
 router.patch("/:taskId/move", moveTask);

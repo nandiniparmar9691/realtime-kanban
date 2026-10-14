@@ -18,6 +18,15 @@ const boardSchema = new mongoose.Schema(
       type: [{ type: String, trim: true, maxlength: 50 }],
       default: [],
     },
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+    memberIds: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+    },
   },
   { timestamps: true }
 );

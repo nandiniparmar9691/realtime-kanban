@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import Board from "../models/Board.js";
 import Task from "../models/Task.js";
 import { emitBoardChanged } from "../utils/boardEvents.js";
 import { withBoardMutationLock } from "../utils/boardMutationQueue.js";
 import { logActivity } from "../utils/activity.js";
+import { loadBoardForUser } from "../utils/boardAccess.js";
 
 const STATUSES = ["Todo", "In Progress", "Review", "Done"];
 const PRIORITIES = ["Low", "Medium", "High"];
@@ -93,7 +93,7 @@ export const createTask = async (req, res, next) => {
     }
 
     await withBoardMutationLock(boardId, async () => {
-      const board = await Board.findById(boardId);
+      const board = await loadBoardForUser(boardId, req.user);
 
       if (!board) {
         res.status(404).json({ message: "Board not found" });
@@ -218,6 +218,8 @@ export const updateTask = async (req, res, next) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
+    await loadBoardForUser(existingTask.board, req.user);
+
     const actor =
       typeof req.body.actor === "string" && req.body.actor.trim()
         ? req.body.actor.trim().slice(0, 50)
@@ -322,6 +324,8 @@ export const moveTask = async (req, res, next) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
+    await loadBoardForUser(existingTask.board, req.user);
+
     const actor =
       typeof req.body.actor === "string" && req.body.actor.trim()
         ? req.body.actor.trim().slice(0, 50)
@@ -401,6 +405,8 @@ export const deleteTask = async (req, res, next) => {
     if (!existingTask) {
       return res.status(404).json({ message: "Task not found" });
     }
+
+    await loadBoardForUser(existingTask.board, req.user);
 
     await withBoardMutationLock(existingTask.board, async () => {
       const task = await Task.findByIdAndDelete(taskId);

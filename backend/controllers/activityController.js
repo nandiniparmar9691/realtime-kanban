@@ -1,27 +1,21 @@
-import mongoose from "mongoose";
 import Board from "../models/Board.js";
 import Activity from "../models/Activity.js";
+import {
+  loadBoardForUser,
+  accessibleBoardFilter,
+} from "../utils/boardAccess.js";
 
 export const getBoardActivity = async (req, res, next) => {
   try {
     const { boardId } = req.params;
-
-    if (!mongoose.isObjectIdOrHexString(boardId)) {
-      return res.status(400).json({ message: "Invalid board ID" });
-    }
-
-    const boardExists = await Board.exists({ _id: boardId });
-
-    if (!boardExists) {
-      return res.status(404).json({ message: "Board not found" });
-    }
+    const board = await loadBoardForUser(boardId, req.user);
 
     const limit = Math.min(
       Math.max(Number.parseInt(req.query.limit, 10) || 30, 1),
       100
     );
 
-    const activities = await Activity.find({ board: boardId })
+    const activities = await Activity.find({ board: board._id })
       .sort({ createdAt: -1 })
       .limit(limit)
       .populate("board", "title")
@@ -40,7 +34,12 @@ export const getRecentActivity = async (req, res, next) => {
       100
     );
 
-    const activities = await Activity.find()
+    const boards = await Board.find(accessibleBoardFilter(req.user))
+      .select("_id")
+      .lean();
+    const boardIds = boards.map((board) => board._id);
+
+    const activities = await Activity.find({ board: { $in: boardIds } })
       .sort({ createdAt: -1 })
       .limit(limit)
       .populate("board", "title")

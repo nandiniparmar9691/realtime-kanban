@@ -2,30 +2,91 @@ import "dotenv/config";
 import express from "express";
 import http from "http";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 
 import connectDB from "./config/db.js";
+import authRoutes from "./routes/authRoutes.js";
 import boardRoutes from "./routes/boardRoutes.js";
 import taskRoutes from "./routes/taskRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import activityRoutes from "./routes/activityRoutes.js";
 import { errorMiddleware } from "./middleware/errorMiddleware.js";
 import { UPLOAD_DIR } from "./middleware/upload.js";
+import { TOKEN_COOKIE } from "./middleware/authMiddleware.js";
 
 const app = express();
 const server = http.createServer(app);
 
-const CLIENT_URL =
-  process.env.CLIENT_URL || "http://localhost:5173";
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",") : []),
+  "http://localhost:5173",
+]
+  .map((origin) => (typeof origin === "string" ? origin.trim() : ""))
+  .filter(Boolean);
 
-app.use(cors({ origin: CLIENT_URL }));
+const isDevelopment = process.env.NODE_ENV !== "production";
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+function isAllowedOrigin(origin) {
+  // Allow same-origin / server-to-server requests that send no Origin header.
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  // In development, accept any localhost/127.0.0.1 port (vite may pick 5174+).
+  if (isDevelopment && LOCAL_ORIGIN.test(origin)) return true;
+  return false;
+}
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(cookieParser());
 
 const io = new Server(server, {
   cors: {
-    origin: CLIENT_URL,
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
     methods: ["GET", "POST", "PATCH", "DELETE"],
   },
+});
+
+// Only authenticated users may open a Socket.IO connection.
+io.use((socket, next) => {
+  try {
+    const cookieHeader = socket.handshake.headers?.cookie || "";
+    const token = cookieHeader
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${TOKEN_COOKIE}=`))
+      ?.slice(TOKEN_COOKIE.length + 1);
+
+    if (!token) {
+      return next(new Error("Authentication required"));
+    }
+
+    const payload = jwt.verify(decodeURIComponent(token), process.env.JWT_SECRET);
+    socket.data.userId = payload.sub;
+    return next();
+  } catch {
+    return next(new Error("Authentication required"));
+  }
 });
 
 app.set("io", io);
@@ -62,45 +123,35 @@ io.on("connection", (socket) => {
       broadcastMembers(previousBoardId);
     }
 
-    socket.join(`board:${boardId}`);
-    socket.data.boardId = String(boardId);
+    socket.data.boardId = boardId;
     socket.data.memberName =
       typeof memberName === "string" && memberName.trim()
         ? memberName.trim().slice(0, 50)
-        : "Guest";
+        : "Teammate";
 
+    socket.join(`board:${boardId}`);
     broadcastMembers(boardId);
-    socket.emit("board:joined", { boardId: String(boardId) });
+    socket.emit("board:joined", { boardId });
   });
 
   socket.on("board:leave", (data = {}) => {
-    const boardId = socket.data.boardId;
+    const boardId = data.boardId || socket.data.boardId;
+    if (typeof boardId !== "string") return;
 
-    if (!boardId || (data.boardId && String(data.boardId) !== boardId)) return;
-
-    socket.to(`board:${boardId}`).emit("typing:update", {
-      boardId,
-      memberName: socket.data.memberName,
-      typing: false,
-    });
     socket.leave(`board:${boardId}`);
-    delete socket.data.boardId;
-    delete socket.data.memberName;
+    if (socket.data.boardId === boardId) {
+      delete socket.data.boardId;
+      delete socket.data.memberName;
+    }
     broadcastMembers(boardId);
   });
 
   socket.on("typing:start", (data = {}) => {
     const { boardId } = data;
-
-    if (
-      !boardId ||
-      String(boardId) !== socket.data.boardId
-    ) {
-      return;
-    }
+    if (typeof boardId !== "string" || boardId !== socket.data.boardId) return;
 
     socket.to(`board:${boardId}`).emit("typing:update", {
-      boardId: String(boardId),
+      boardId,
       memberName: socket.data.memberName,
       typing: true,
     });
@@ -108,16 +159,10 @@ io.on("connection", (socket) => {
 
   socket.on("typing:stop", (data = {}) => {
     const { boardId } = data;
-
-    if (
-      !boardId ||
-      String(boardId) !== socket.data.boardId
-    ) {
-      return;
-    }
+    if (typeof boardId !== "string" || boardId !== socket.data.boardId) return;
 
     socket.to(`board:${boardId}`).emit("typing:update", {
-      boardId: String(boardId),
+      boardId,
       memberName: socket.data.memberName,
       typing: false,
     });
@@ -125,15 +170,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     if (socket.data.boardId) {
-      const boardId = socket.data.boardId;
-
-      socket.to(`board:${boardId}`).emit("typing:update", {
-        boardId: String(boardId),
-        memberName: socket.data.memberName,
-        typing: false,
-      });
-
-      broadcastMembers(boardId);
+      broadcastMembers(socket.data.boardId);
     }
   });
 });
@@ -148,6 +185,7 @@ app.get("/api/health", (req, res) => {
 
 app.use("/uploads", express.static(UPLOAD_DIR));
 
+app.use("/api/auth", authRoutes);
 app.use("/api/boards", boardRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/dashboard", dashboardRoutes);

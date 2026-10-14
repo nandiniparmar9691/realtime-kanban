@@ -3,6 +3,7 @@ import Comment from "../models/Comment.js";
 import Task from "../models/Task.js";
 import { logActivity } from "../utils/activity.js";
 import { emitBoardChanged } from "../utils/boardEvents.js";
+import { loadBoardForUser } from "../utils/boardAccess.js";
 
 const validId = (id) =>
   typeof id === "string" && mongoose.isObjectIdOrHexString(id);
@@ -20,6 +21,9 @@ export const getComments = async (req, res, next) => {
     if (!taskExists) {
       return res.status(404).json({ message: "Task not found" });
     }
+
+    const task = await Task.findById(taskId).select("board");
+    await loadBoardForUser(task.board, req.user);
 
     const comments = await Comment.find({ task: taskId })
       .sort({ createdAt: 1 })
@@ -62,6 +66,8 @@ export const addComment = async (req, res, next) => {
       return res.status(404).json({ message: "Task not found" });
     }
 
+    await loadBoardForUser(task.board, req.user);
+
     const comment = await Comment.create({
       task: task._id,
       board: task.board,
@@ -102,11 +108,14 @@ export const deleteComment = async (req, res, next) => {
       return res.status(400).json({ message: "Invalid comment ID" });
     }
 
-    const comment = await Comment.findByIdAndDelete(commentId);
+    const comment = await Comment.findById(commentId);
 
     if (!comment) {
       return res.status(404).json({ message: "Comment not found" });
     }
+
+    await loadBoardForUser(comment.board, req.user);
+    await comment.deleteOne();
 
     emitBoardChanged(req, comment.board);
     res.json({ message: "Comment deleted successfully" });

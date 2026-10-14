@@ -5,6 +5,7 @@ import Task from "../models/Task.js";
 import { logActivity } from "../utils/activity.js";
 import { emitBoardChanged } from "../utils/boardEvents.js";
 import { UPLOAD_DIR } from "../middleware/upload.js";
+import { loadBoardForUser } from "../utils/boardAccess.js";
 
 const validId = (id) =>
   typeof id === "string" && mongoose.isObjectIdOrHexString(id);
@@ -26,6 +27,13 @@ export const addAttachment = async (req, res, next) => {
     if (!task) {
       fs.unlink(req.file.path, () => {});
       return res.status(404).json({ message: "Task not found" });
+    }
+
+    try {
+      await loadBoardForUser(task.board, req.user);
+    } catch (accessError) {
+      fs.unlink(req.file.path, () => {});
+      throw accessError;
     }
 
     const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
@@ -74,6 +82,8 @@ export const deleteAttachment = async (req, res, next) => {
     if (!task) {
       return res.status(404).json({ message: "Task not found" });
     }
+
+    await loadBoardForUser(task.board, req.user);
 
     const attachment = task.attachments.id(attachmentId);
 
